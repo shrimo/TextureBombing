@@ -1,0 +1,269 @@
+/*Texture Bombing
+The basic idea behind texture bombing is to divide UV space into a regular grid of cells. 
+We then place an image within each cell at a random location, using a noise or pseudo-random number function. 
+The final result is the composite of these images over the background.
+*/
+
+color blend(
+    color a,
+    color b,
+    color x)
+{
+    return ((a) * (1-(x)) + (b) * (x));
+}
+
+float polygon(
+    float s, 
+    float t,              
+    float innerRad,
+    float line)
+{
+    float numSides = 6;    
+    float   x = s - 0.5, y = t - 0.5;
+    float   R = sqrt(x * x + y * y);
+    float   theta = atan2(y, x); // -PI to PI radians
+    if(theta < 0.0)
+        theta += 2 * M_PI;        //  0 to 2PI radians
+        
+    float interior = (2 * M_PI)/numSides;
+    float segment = floor(theta/interior);
+        
+    float rotation = (segment * interior + interior/2);
+        
+    point  stPnt = point(s - 0.5, 0.5 - t, 0);
+    point  origin = point(0, 0, 0);
+    point  z_axis = point(0, 0, 1);
+    point  rotPnt = rotate(stPnt, rotation, origin, z_axis);
+        
+    return 1 - smoothstep(innerRad, innerRad + line/2, rotPnt[0]);
+}
+
+float disk(
+    float u, 
+    float v,
+    float R,
+    float blur_x,
+    float erode,
+    point center)
+{
+    point here = point (u, v, 0);
+    float dist = distance(center, here);
+    return 1 - smoothstep((R/2.0) + blur_x, (R/2.0) + erode, dist);
+}
+
+color rgb_to_lin(color input_color)
+{
+    float r = input_color[0];
+    float g = input_color[1];
+    float b = input_color[2];
+
+    r = (r < 0.04045) ? r * 0.07739938 : pow((r + 0.055) * 0.947867299, 2.4);
+    g = (g < 0.04045) ? g * 0.07739938 : pow((g + 0.055) * 0.947867299, 2.4);
+    b = (b < 0.04045) ? b * 0.07739938 : pow((b + 0.055) * 0.947867299, 2.4);
+
+    return color(r, g, b);
+}
+
+color rgb_to_lin2(color input_color)
+{
+    color out_color = 0;
+    for (int i = 0; i<3; i++)
+    {
+        if (input_color[i] <= 0.0)
+            out_color[i] = 0.0;
+        else if (input_color[i] >= 1.0)
+            out_color[i] = 1.0;
+        else if (input_color[i] < 0.04045)
+            out_color[i] = input_color[i] / 12.92;
+        else
+            out_color[i] = pow((input_color[i] + 0.055) / 1.055, 2.4);
+    }
+    return out_color;
+}
+
+shader TBombing_shader_v02
+[[
+    int rfm_nodeid=902,
+    string rfm_classification="rendernode/RenderMan/pattern/TBombing_shader_v02",
+    int rfc_nodeid=1002, string rfc_description="Xpxrlayer",
+    string help = "RIS Custom OSL pattern version 0.2"
+]]
+
+(string filename = "/home/v.lavrentev/project/OSL/texture/Stone01.tx"
+    [[
+        string page = "Textures",
+        string widget = "fileInput"
+    ]],
+    int linearize = 0
+    [[
+        string page = "Textures",
+        string widget = "checkBox",
+        string help = "sRGB to Lin"
+    ]],
+    string space = "object"
+    [[
+        string page = "Textures",
+        string widget = "popup",
+        string options = "object|world|screen",
+        string help = "Transform a point coordinate system"
+    ]],
+    float scale = 0.12
+    [[
+        string page = "Textures",
+        string label = "texture size"
+    ]],      
+    float angle = 0 
+    [[
+        string page = "Textures",
+        string label = "texture rotate"
+    ]],
+    string noise_name = "cell"
+    [[
+        string page = "Bombing",
+        string label = "noise type",
+        string widget = "popup",
+        string options = "cell|noise",
+        string help = "noise type"
+    ]],
+    float nscale = 1
+    [[
+        string page = "Bombing",
+        string label = "noise size",
+        string help = "noise size ~1-10"
+
+    ]],
+    int layers = 1
+    [[
+        string page = "Bombing",
+        string label = "bombing samples",
+        string help = "number of stamp iterations"
+
+    ]],
+    float OffsetX = 0.5
+    [[
+        string page = "Bombing",
+        string label = "Сell Offset X"
+    ]],
+    float OffsetY = 0.5
+    [[
+        string page = "Bombing",
+        string label = "Сell Offset Y"
+    ]],
+    float Radius = 1
+    [[
+        string page = "Bombing.Mask",
+        string help = "Mask radius",
+        string help = "stamp radius"
+    ]],
+    float blur_x  = 0
+    [[        
+        string page = "Bombing.Mask",
+        string label = "falloff",
+        string help = "Mask falloff"
+    ]],
+    float erode  = 0
+    [[
+        string page = "Bombing.Mask",
+        string help = "Mask erode"
+    ]],
+    color bg = 0.5
+    [[
+        string page = "Bombing",
+        string label = "Background color"
+    ]],    
+    float strength_u = 1
+    [[
+        string page = "Triplanar",
+        string label = "Strength U"
+    ]],
+    float strength_v = 1
+    [[
+        string page = "Triplanar",
+        string label = "Strength V"
+    ]],
+    vector X_clamp = vector(0, 1, 0)
+    [[
+        string page = "Triplanar",
+        string label = "Normal clamp X"
+    ]],
+    vector Y_clamp = vector(0, 1, 0)
+    [[
+        string page = "Triplanar",
+        string label = "Normal clamp Y"
+    ]],
+    vector Z_clamp = vector(0, 1, 0)
+    [[
+        string page = "Triplanar",
+        string label = "Normal clamp Z"
+    ]],    
+    output color color_out = 0
+    [[
+        string widget = "null"
+    ]])
+{    
+    color triplanar[3] = {bg, bg, bg};
+    float mask[3];
+    color image[3];
+    // vector shift = vector(0, 0, 0);
+    color input = 0;
+
+    point Pos = transform(space, P); //transform(space, P);
+    vector NN = normalize(transform(space, N));    
+    
+    vector tex = vector(Pos * scale);
+    vector cell = floor(tex);
+    vector offs = tex - cell;
+    point center = point (OffsetX, OffsetY, 0.0);
+
+    vector Rt1 = 0;
+    vector Rt2 = 0;
+    vector Rt3 = 0;
+    
+    for (int i = -1; i <= 0; i++ ){
+        for (int j = -1; j <= 0; j++ ){
+            for (int k = -1; k <= 0; k++ ){
+
+                vector cell_t = cell + vector( i, j, k );
+                vector curOffs = offs - vector( i, j, k );
+                vector randomUV = vector(cell_t[0] * 0.037, cell_t[1] * 0.119, cell_t[2] * 0.003);
+
+                for (int s = 0; s < layers; s++){
+
+                    randomUV += (vector) noise(noise_name, randomUV * nscale);
+                    vector tx_rnd = (vector) noise(noise_name, randomUV);
+                    vector Tt = curOffs - tx_rnd; // + shift;
+
+                    Rt1 = (vector) rotate(Tt, radians(angle), Tt[0], Tt[1]);
+                    Rt2 = (vector) rotate(Tt, radians(angle), Tt[0], Tt[2]);
+                    Rt3 = (vector) rotate(Tt, radians(angle), Tt[1], Tt[2]);
+
+                    image[0] = (color) texture (filename, Rt1[0] * strength_u, Rt1[1] * strength_v);
+                    image[1] = (color) texture (filename, Rt2[0] * strength_u, Rt2[2] * strength_v);                         
+                    image[2] = (color) texture (filename, Rt3[1] * strength_u, Rt3[2] * strength_v);                        
+                                                            
+                    mask[0] = disk(Rt1[0], Rt1[1], Radius, blur_x, erode, center);
+                    mask[1] = disk(Rt2[0], Rt2[2], Radius, blur_x, erode, center);
+                    mask[2] = disk(Rt3[1], Rt3[2], Radius, blur_x, erode, center);
+
+                    for (int i = 0; i<3; i++)
+                        triplanar[i] = blend(triplanar[i], image[i], mask[i]);
+                }
+            }
+        }
+    }
+        
+    float nNx = clamp((1-clamp((1-abs(NN[0])) * (1/(1-X_clamp[0])),0,1)) * 1/X_clamp[1],0,1);
+    float nNy = clamp((1-clamp((1-abs(NN[1])) * (1/(1-Y_clamp[0])),0,1)) * 1/Y_clamp[1],0,1);
+    float nNz = clamp((1-clamp((1-abs(NN[2])) * (1/(1-Z_clamp[0])),0,1)) * 1/Z_clamp[1],0,1);
+
+    if (linearize)
+    {
+        color_out = rgb_to_lin( mix(mix(mix(input, triplanar[0], nNz), triplanar[1], nNy), triplanar[2], nNx) );
+    }
+    else 
+    {
+        color_out = mix(mix(mix(input, triplanar[0], nNz), triplanar[1], nNy), triplanar[2], nNx);
+    }
+    
+}
+
