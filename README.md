@@ -9,9 +9,9 @@ The final result is the composite of these images over the background.
 
 According to this documents
 
-http://developer.download.nvidia.com/books/HTML/gpugems/gpugems_ch20.html
+[http://developer.download.nvidia.com/books/HTML/gpugems/gpugems_ch20.html](https://developer.nvidia.com/gpugems/gpugems/part-iii-materials/chapter-20-texture-bombing)
 
-https://medium.com/@bgolus/normal-mapping-for-a-triplanar-shader-10bf39dca05a
+[https://medium.com/@bgolus/normal-mapping-for-a-triplanar-shader-10bf39dca05a](https://bgolus.medium.com/normal-mapping-for-a-triplanar-shader-10bf39dca05a)
 
 
 Texture bombing pattern contains the following sections:
